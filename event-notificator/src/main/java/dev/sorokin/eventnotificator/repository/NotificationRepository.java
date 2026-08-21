@@ -33,4 +33,10 @@ public interface NotificationRepository extends JpaRepository<NotificationEntity
             @Param("readAt") LocalDateTime readAt
     );
 
+    @Query("""
+        SELECT COUNT(n) FROM NotificationEntity n
+        WHERE n.userId = :userId AND n.isRead = false
+    """)
+    long countByUserIdAndReadFalse(@Param("userId") Long userId);
+
 }

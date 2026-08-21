@@ -26,6 +26,9 @@ spring:
       key-serializer: org.apache.kafka.common.serialization.LongSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
 
+  cache:
+    type: redis
+
 jwt:
   secret-key: 9f3c8b2a1d4e7f6a5c8d0e2b9a4f6c7d1e8b3a5f0c9d2e6a7b4f8c1d5e
   lifetime: 86400000
