@@ -19,7 +19,10 @@ import dev.sorokin.eventmanager.repository.EventRepository;
 import dev.sorokin.eventmanager.repository.RegistrationRepository;
 import dev.sorokin.eventmanager.repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +43,8 @@ public class EventService {
     private final LocationEntityMapper locationEntityMapper;
     private final RegistrationRepository registrationRepository;
     private final KafkaEventSender kafkaEventSender;
+    private final RedisTemplate<String, Event> redisTemplate;
+    private static final String CACHE_KEY_PREFIX = "event::";
 
     public EventService(
             EventEntityMapper eventEntityMapper,
@@ -48,7 +53,8 @@ public class EventService {
             LocationService locationService,
             LocationEntityMapper locationEntityMapper,
             RegistrationRepository registrationRepository,
-            KafkaEventSender kafkaEventSender
+            KafkaEventSender kafkaEventSender,
+            RedisTemplate<String, Event> redisTemplate
     ) {
         this.eventEntityMapper = eventEntityMapper;
         this.eventRepository = eventRepository;
@@ -57,6 +63,7 @@ public class EventService {
         this.locationEntityMapper = locationEntityMapper;
         this.registrationRepository = registrationRepository;
         this.kafkaEventSender = kafkaEventSender;
+        this.redisTemplate = redisTemplate;
     }
 
     public Event createEvent(Event eventToCreate) {
@@ -79,12 +86,20 @@ public class EventService {
         );
     }
 
+    @Cacheable(
+            value = "event",
+            key = "#eventId"
+    )
     public Event findById(Long eventId) {
         var foundEvent = eventRepository.findById(eventId)
                 .orElseThrow(() -> new ResourceNotFoundException("Event", eventId));
         return eventEntityMapper.toDomain(foundEvent);
     }
 
+    @CacheEvict(
+            value = "event",
+            key = "#eventId"
+    )
     @Transactional
     public Event updateEvent(Long eventId, Event eventToUpdate, User user) {
         if (user.getRole() == UserRole.USER && !user.getId().equals(eventToUpdate.getOwnerId())) {
@@ -175,6 +190,10 @@ public class EventService {
         return eventEntityMapper.toDomain(updatedEvent);
     }
 
+    @CacheEvict(
+            value = "event",
+            key = "#eventId"
+    )
     @Transactional
     public void deleteEvent(Long eventId, User currentUser) {
         var deletedEvent = eventRepository.findById(eventId)
@@ -264,6 +283,9 @@ public class EventService {
                     EventStatus.WAIT_START,
                     EventStatus.STARTED
             );
+
+            var cacheKey = CACHE_KEY_PREFIX + event.getId();
+            redisTemplate.delete(cacheKey);
         }
 
         // STARTED -> FINISHED
@@ -275,6 +297,9 @@ public class EventService {
                     EventStatus.STARTED,
                     EventStatus.FINISHED
             );
+
+            var cacheKey = CACHE_KEY_PREFIX + event.getId();
+            redisTemplate.delete(cacheKey);
         }
 
         log.info("Updated statuses: {} events started, {} events finished", eventsToStart.size(), eventsToFinish.size());

@@ -1,0 +1,9 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:${test.postgres_event-manager.port}/postgres_event-manager
+    username: postgres_event-manager
+    password: root
+
+  data:
+    redis:
+      host: localhost
