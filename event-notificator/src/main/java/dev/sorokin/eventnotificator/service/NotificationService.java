@@ -81,7 +81,7 @@ public class NotificationService {
             try {
                 stringRedisTemplate.opsForValue().increment(UNREAD_COUNTER_PREFIX + userId);
             } catch (Exception ex) {
-                log.error("Redis is unavailable, counter for userId={} has not been increased", userId);
+                log.error("Redis is unavailable, unread counter for userId={} was not incremented", userId, ex);
             }
         }
     }
@@ -108,8 +108,9 @@ public class NotificationService {
         try {
             long actualUnread = notificationRepository.countByUserIdAndReadFalse(userId);
             stringRedisTemplate.opsForValue().set(UNREAD_COUNTER_PREFIX + userId, String.valueOf(actualUnread));
-        } catch (Exception e) {
-            log.error("Redis is unavailable, the counter for userId={} will be resynchronized later", userId);
+        } catch (Exception ex) {
+            log.error("Redis is unavailable, unread counter for userId={} was not updated. " +
+                    "Counter will be corrected on the next mark-as-read request", userId, ex);
         }
 
         log.info("Marked {} notifications as read for userId={}", updatedCountNotifications, userId);
