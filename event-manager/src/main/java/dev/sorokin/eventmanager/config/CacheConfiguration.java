@@ -4,8 +4,12 @@ import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.sorokin.eventmanager.model.domain.Event;
 import dev.sorokin.eventmanager.model.domain.Location;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
+import org.springframework.cache.annotation.CachingConfigurer;
 import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.cache.interceptor.CacheErrorHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
@@ -20,7 +24,8 @@ import java.util.List;
 
 @Configuration
 @EnableCaching
-public class CacheConfiguration {
+@Slf4j
+public class CacheConfiguration implements CachingConfigurer {
 
     @Bean
     public RedisTemplate<String, Event> redisTemplate(
@@ -74,6 +79,35 @@ public class CacheConfiguration {
                 .disableCreateOnMissingCache()
                 .transactionAware()
                 .build();
+    }
+
+    @Override
+    public CacheErrorHandler errorHandler() {
+        return new CacheErrorHandler() {
+            @Override
+            public void handleCacheGetError(RuntimeException exception, Cache cache, Object key) {
+                log.error("Cache GET error [cache={}, key={}]: {}. Fallback to DB.",
+                        cache.getName(), key, exception.toString());
+            }
+
+            @Override
+            public void handleCachePutError(RuntimeException exception, Cache cache, Object key, Object value) {
+                log.error("Cache PUT error [cache={}, key={}]: {}. Skipping cache write.",
+                        cache.getName(), key, exception.toString());
+            }
+
+            @Override
+            public void handleCacheEvictError(RuntimeException exception, Cache cache, Object key) {
+                log.error("Cache EVICT error [cache={}, key={}]: {}. Skipping cache eviction.",
+                        cache.getName(), key, exception.toString());
+            }
+
+            @Override
+            public void handleCacheClearError(RuntimeException exception, Cache cache) {
+                log.error("Cache CLEAR error [cache={}]: {}. Skipping cache clear.",
+                        cache.getName(), exception.toString());
+            }
+        };
     }
 
 }

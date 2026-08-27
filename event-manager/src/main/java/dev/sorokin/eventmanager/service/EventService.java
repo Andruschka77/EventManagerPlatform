@@ -19,6 +19,8 @@ import dev.sorokin.eventmanager.repository.EventRepository;
 import dev.sorokin.eventmanager.repository.RegistrationRepository;
 import dev.sorokin.eventmanager.repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Pageable;
@@ -43,8 +45,8 @@ public class EventService {
     private final LocationEntityMapper locationEntityMapper;
     private final RegistrationRepository registrationRepository;
     private final KafkaEventSender kafkaEventSender;
-    private final RedisTemplate<String, Event> redisTemplate;
-    private static final String CACHE_KEY_PREFIX = "event::";
+    private final CacheManager cacheManager;
+    private static final String EVENT_CACHE_NAME = "event";
 
     public EventService(
             EventEntityMapper eventEntityMapper,
@@ -54,7 +56,7 @@ public class EventService {
             LocationEntityMapper locationEntityMapper,
             RegistrationRepository registrationRepository,
             KafkaEventSender kafkaEventSender,
-            RedisTemplate<String, Event> redisTemplate
+            CacheManager cacheManager
     ) {
         this.eventEntityMapper = eventEntityMapper;
         this.eventRepository = eventRepository;
@@ -63,7 +65,7 @@ public class EventService {
         this.locationEntityMapper = locationEntityMapper;
         this.registrationRepository = registrationRepository;
         this.kafkaEventSender = kafkaEventSender;
-        this.redisTemplate = redisTemplate;
+        this.cacheManager =  cacheManager;
     }
 
     public Event createEvent(Event eventToCreate) {
@@ -284,8 +286,7 @@ public class EventService {
                     EventStatus.STARTED
             );
 
-            var cacheKey = CACHE_KEY_PREFIX + event.getId();
-            redisTemplate.delete(cacheKey);
+            evictEventFromCache(event.getId());
         }
 
         // STARTED -> FINISHED
@@ -298,8 +299,7 @@ public class EventService {
                     EventStatus.FINISHED
             );
 
-            var cacheKey = CACHE_KEY_PREFIX + event.getId();
-            redisTemplate.delete(cacheKey);
+            evictEventFromCache(event.getId());
         }
 
         log.info("Updated statuses: {} events started, {} events finished", eventsToStart.size(), eventsToFinish.size());
@@ -321,6 +321,17 @@ public class EventService {
                 registrationRepository.findSubscriberIdsByEventId(event.getId()),
                 changes
         ));
+    }
+
+    private void evictEventFromCache(Long eventId) {
+        Cache eventCache = cacheManager.getCache(EVENT_CACHE_NAME);
+        if (eventCache != null) {
+            try {
+                eventCache.evict(eventId);
+            } catch (RuntimeException ex) {
+                log.error("Failed to evict event cache for id={}: {}", eventId, ex.toString());
+            }
+        }
     }
 
 }
